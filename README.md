@@ -1,14 +1,20 @@
 # API REST — Usuários e Tarefas
 
-Projeto didático de uma API REST simples em Node.js + Express, com CRUD de **usuários** e **tarefas**, sem banco de dados (dados em memória).
+API didática em Node.js + Express + SQLite com CRUD completo de usuários, login via JWT e CRUD completo de tarefas.
 
-Material de apoio à disciplina — SENAC / UC3.
+O projeto é uma implementação para a disciplina UC3 do SENAC, mostrando autenticação, proteção de rotas, criptografia de senhas e persistência em banco de dados local.
 
 ---
 
 ## Objetivo
 
-Servir como **referência de implementação** para a atividade descrita no documento `Guia-Construcao-API-REST.docx`. Use este código apenas para **conferir** sua implementação depois de tentar fazer sozinho.
+Demonstrar um backend REST com:
+- cadastro e login de usuários
+- autenticação JWT
+- CRUD completo de usuários
+- CRUD completo de tarefas
+- listagem de tarefas por usuário
+- proteção das rotas sensíveis via middleware
 
 ---
 
@@ -16,24 +22,34 @@ Servir como **referência de implementação** para a atividade descrita no docu
 
 - Node.js 18+
 - Express 4
-- Nodemon (apenas em desenvolvimento)
-- ES Modules (`import` / `export`)
+- SQLite (`sqlite`, `sqlite3`)
+- JWT (`jsonwebtoken`)
+- bcrypt
+- helmet
+- cors
+- dotenv
+- nodemon (desenvolvimento)
+- ES Modules (`type": "module"`)
 
 ---
 
 ## Estrutura de pastas
 
 ```
-api-rest-senac/
+projeto-senac-back/
 ├── package.json
-├── index.js                 # ponto de entrada do servidor
-├── .gitignore
+├── package-lock.json
+├── index.js
+├── README.md
 └── src/
-    ├── data/
-    │   └── db.js            # arrays em memória + contadores de id
     ├── controllers/
     │   ├── usuariosController.js
     │   └── tarefasController.js
+    ├── data/
+    │   ├── db.js
+    │   └── database.db
+    ├── middlewares/
+    │   └── autenticacao.js
     └── routes/
         ├── usuariosRoutes.js
         └── tarefasRoutes.js
@@ -43,29 +59,53 @@ api-rest-senac/
 
 | Camada | Responsabilidade |
 |---|---|
-| `index.js` | Sobe o Express, registra middlewares e monta as rotas. |
-| `routes/` | Mapeia verbo HTTP + caminho para a função do controller. |
-| `controllers/` | Implementa a lógica do CRUD (validações, manipulação dos arrays, respostas HTTP). |
-| `data/db.js` | Simula o "banco" com arrays em memória e contadores de id. |
+| `index.js` | Sobe o Express, registra middlewares globais e monta as rotas. |
+| `routes/` | Mapeia URLs para controllers e aplica autenticação quando necessário. |
+| `middlewares/` | Validação de JWT e regras de segurança antes do controller. |
+| `controllers/` | Implementa lógica de CRUD, login e respostas HTTP. |
+| `data/db.js` | Abre conexão SQLite e cria o schema se necessário. |
 
 ---
 
 ## Como rodar
 
-Pré-requisito: Node.js 18 ou superior instalado (`node -v`).
+Pré-requisitos: Node.js 18+.
 
 ```bash
-# 1) instalar dependências
 npm install
+```
 
-# 2) rodar em modo desenvolvimento (auto-reload com nodemon)
+Crie um arquivo `.env` na raiz com as variáveis abaixo:
+
+```env
+PORT=3000
+JWT_SECRET=umaSenhaSecreta
+JWT_EXPIRES_IN=1d
+```
+
+Depois execute:
+
+```bash
 npm run dev
+```
 
-# ou rodar normalmente
+Ou em produção:
+
+```bash
 npm start
 ```
 
-O servidor sobe em `http://localhost:3000`.
+O servidor estará disponível em `http://localhost:3000`.
+
+---
+
+## Variáveis de ambiente
+
+| Variável | Descrição |
+|---|---|
+| `PORT` | Porta do servidor HTTP. Padrão `3000`. |
+| `JWT_SECRET` | Segredo usado para assinar e verificar tokens JWT. |
+| `JWT_EXPIRES_IN` | Tempo de expiração do token JWT (ex.: `1d`, `12h`). |
 
 ---
 
@@ -73,21 +113,24 @@ O servidor sobe em `http://localhost:3000`.
 
 Base URL: `http://localhost:3000`
 
-### Usuários — `/usuarios`
+### Auth / Usuários
 
-| Verbo | Caminho | Descrição |
-|---|---|---|
-| GET | `/usuarios` | Lista todos os usuários |
-| GET | `/usuarios/:id` | Busca usuário por id |
-| POST | `/usuarios` | Cria novo usuário |
-| PUT | `/usuarios/:id` | Atualiza campos do usuário (parcial) |
-| DELETE | `/usuarios/:id` | Remove usuário |
+| Método | URL | Protegido | Descrição |
+|---|---|---|---|
+| POST | `/usuarios` | não | Cadastra novo usuário |
+| POST | `/usuarios/login` | não | Autentica usuário e devolve JWT |
+| GET | `/usuarios/perfil` | sim | Retorna os dados do usuário logado |
+| GET | `/usuarios` | sim | Lista todos os usuários |
+| GET | `/usuarios/:id` | sim | Busca usuário por id |
+| PUT | `/usuarios/:id` | sim | Atualiza dados do próprio usuário |
+| DELETE | `/usuarios/:id` | sim | Remove o próprio usuário |
 
-**Modelo de usuário**
+> `Authorization` deve ser enviado como `Bearer <token>` nas rotas protegidas.
+
+**Cadastro de usuário**
 
 ```json
 {
-  "id": 1,
   "nome": "Maria",
   "email": "maria@example.com",
   "telefone": "27999999999",
@@ -95,17 +138,20 @@ Base URL: `http://localhost:3000`
 }
 ```
 
-**Campos obrigatórios no POST:** `nome`, `email`, `telefone`, `senha`.
+A senha é armazenada como hash com `bcrypt` e não é retornada nas respostas.
 
-### Tarefas — `/tarefas`
+### Tarefas
 
-| Verbo | Caminho | Descrição |
+Todas as rotas de tarefa são protegidas e usam o `usuarioId` do token.
+
+| Método | URL | Descrição |
 |---|---|---|
-| GET | `/tarefas` | Lista todas as tarefas |
-| GET | `/tarefas/:id` | Busca tarefa por id |
-| POST | `/tarefas` | Cria nova tarefa |
-| PUT | `/tarefas/:id` | Atualiza tarefa (parcial) |
-| DELETE | `/tarefas/:id` | Remove tarefa |
+| GET | `/tarefas` | Lista as tarefas do usuário logado |
+| GET | `/tarefas/:id` | Busca tarefa por id (do usuário logado) |
+| GET | `/tarefas/usuario/:usuarioId` | Lista tarefas de um usuário específico (somente o próprio usuário) |
+| POST | `/tarefas` | Cria nova tarefa para o usuário logado |
+| PUT | `/tarefas/:id` | Atualiza tarefa do usuário logado |
+| DELETE | `/tarefas/:id` | Remove tarefa do usuário logado |
 
 **Modelo de tarefa**
 
@@ -118,109 +164,74 @@ Base URL: `http://localhost:3000`
 }
 ```
 
-**Campos obrigatórios no POST:** `titulo`, `usuarioId` (precisa existir em `/usuarios`).
+**Corpo válido para criação**
 
----
-
-## Exemplos de requisição (curl)
-
-### Listar usuários
-
-```bash
-curl http://localhost:3000/usuarios
+```json
+{ "titulo": "Estudar Node" }
 ```
 
-### Criar usuário
+### Fluxo de autenticação
+
+1. Cadastrar usuário:
 
 ```bash
 curl -X POST http://localhost:3000/usuarios \
   -H "Content-Type: application/json" \
-  -d '{
-    "nome": "Maria",
-    "email": "maria@example.com",
-    "telefone": "27988887777",
-    "senha": "123456"
-  }'
+  -d '{"nome":"Maria","email":"maria@example.com","telefone":"27988887777","senha":"123456"}'
 ```
 
-### Atualizar parcialmente
+2. Fazer login:
 
 ```bash
-curl -X PUT http://localhost:3000/usuarios/1 \
+curl -X POST http://localhost:3000/usuarios/login \
   -H "Content-Type: application/json" \
-  -d '{ "telefone": "27911112222" }'
+  -d '{"email":"maria@example.com","senha":"123456"}'
 ```
 
-### Remover usuário
+3. Usar o token nas rotas protegidas:
 
 ```bash
-curl -X DELETE http://localhost:3000/usuarios/1
+curl http://localhost:3000/usuarios/perfil \
+  -H "Authorization: Bearer <token>"
 ```
 
-### Criar tarefa vinculada a um usuário
+4. Criar tarefa:
 
 ```bash
 curl -X POST http://localhost:3000/tarefas \
   -H "Content-Type: application/json" \
-  -d '{ "titulo": "Estudar Node", "usuarioId": 1 }'
+  -H "Authorization: Bearer <token>" \
+  -d '{"titulo":"Estudar Node"}'
 ```
 
 ---
 
 ## Códigos de status usados
 
-| Código | Quando |
+| Código | Significado |
 |---|---|
-| 200 | OK em GET, PUT e DELETE |
-| 201 | Recurso criado com sucesso (POST) |
-| 400 | Body inválido / campos obrigatórios ausentes / referência inexistente |
-| 404 | Recurso não encontrado por id |
+| 200 | Sucesso em GET, PUT, DELETE |
+| 201 | Recurso criado com sucesso |
+| 400 | Requisição inválida / campos faltando |
+| 401 | Não autenticado / token inválido |
+| 403 | Sem permissão para acessar o recurso |
+| 404 | Recurso não encontrado |
+| 409 | E-mail já cadastrado |
 
 ---
 
-## Conceitos de JavaScript exercitados
+## Limitações
 
-- **Arrays:** `find`, `findIndex`, `some`, `push`, `splice`
-- **Funções:** declaradas com `export function` e usadas em rotas
-- **Objetos:** spread (`...`) com short-circuit para atualização parcial
-- **Módulos:** `import` / `export` com ESM (`"type": "module"` no `package.json`)
-
----
-
-## Limitações conhecidas (são propositais — didático)
-
-- Dados em memória: ao reiniciar o servidor, tudo se perde.
-- Senha em texto puro, sem hash. **Não use isso em produção.**
-- Sem autenticação. Qualquer cliente pode chamar qualquer endpoint.
-- Sem unicidade de email — é possível cadastrar dois usuários com o mesmo email.
-- Sem tratamento global de erros — cada controller lida com os seus.
+- Não há validação avançada de formato de email e telefone.
+- Não há refresh token ou blacklist de JWT.
+- Sem rate limiting.
+- Sem testes automatizados.
+- Sem frontend integrado.
 
 ---
 
-## Próximos passos sugeridos (desafios)
+## Observações
 
-1. Impedir cadastro com email duplicado (retornar 409).
-2. Criar `GET /usuarios/:id/tarefas` retornando só as tarefas daquele usuário.
-3. Omitir o campo `senha` nas respostas.
-4. Persistir os dados em um arquivo `data.json`.
-5. Validar formato do email com regex.
-6. Trocar o array por um banco real (SQLite ou MongoDB).
-7. Adicionar autenticação com JWT e proteger as rotas.
-
----
-
-## Erros comuns
-
-| Sintoma | Provável causa |
-|---|---|
-| `SyntaxError: Cannot use import statement outside a module` | Faltou `"type": "module"` no `package.json`. |
-| `req.body` chega como `undefined` | Faltou `app.use(express.json())` no `index.js`. |
-| `Cannot find module './foo'` | Em ESM a extensão `.js` no import é obrigatória. |
-| Servidor não atualiza ao salvar | Está rodando `node` em vez de `nodemon` — use `npm run dev`. |
-| Comparação por id sempre falsa | Esqueceu de converter `req.params.id` com `Number()`. |
-
----
-
-## Licença
-
-Uso livre para fins educacionais.
+- As senhas são protegidas com `bcrypt`.
+- O token JWT deve ser enviado no header `Authorization`.
+- O banco SQLite é criado em `src/data/database.db`.
