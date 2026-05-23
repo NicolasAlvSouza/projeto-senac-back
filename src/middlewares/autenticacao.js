@@ -20,6 +20,7 @@ export function autenticarJWT(req, res, next) {
 
   // separa "Bearer" do token em si
   const token = headerAuth.split(' ')[1];
+  console.log(token)
 
   try {
     // jwt.verify lança exceção se o token estiver inválido, expirado
